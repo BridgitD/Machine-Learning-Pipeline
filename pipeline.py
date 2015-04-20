@@ -11,8 +11,9 @@ import matplotlib.pyplot as plt
 import pylab
 import sys
 import sklearn as sk
+from sklearn.neighbors import KNeighborsRegressor
 
-# Code adapted from Chapin Hall python library & https://github.com/yhat/DataGotham2013/
+# Code adapted from https://github.com/yhat/DataGotham2013/
 
 class MLPipeline():
 	"""
@@ -40,7 +41,7 @@ class MLPipeline():
 			self.df = self.read_data(self.training_data)
 
 			# Output Training Summary Statistics
-			self.summary = self.summarize(self.df, self.training_data)
+			self.summary = self.summarize(self.df)
 
 
 	## 1. Read Data: For this assignment, assume input is CSV
@@ -58,7 +59,7 @@ class MLPipeline():
 	## 2. Explore Data: You can use the code you wrote for assignment 1 here to generate 
 	## distributions and data summaries
 
-	def summarize(self, df, filename):
+	def summarize(self, df):
 		'''
 		Given a dataframe and the original filename, this outputs a CSV with an adjusted filename.
 		Return the summary table.
@@ -72,14 +73,19 @@ class MLPipeline():
 		summary['missing_vals'] = df.count().max() - df.describe().T['count'] # Tot. Count - count
 		
 		output = summary.T
-
-		# Adjust filename
-		filename_split = str(filename).strip().split('.')
-		output_fn = "".join(filename_split[0:len(filename_split)-1]) + "_summary.csv"
-
-		output.to_csv(output_fn)
-
 		return output
+
+	def print_to_csv(self, df, filename):
+		''' Given a dataframe and a filename, outputs a CSV.'''
+
+		# Check that filename was CSV
+		filename_split = str(filename).strip().split('.')
+
+		if filename_split[-1] != 'csv':
+			filename = "".join(filename_split[0:len(filename_split)-1]) + ".csv"
+
+		df.to_csv(filename)
+
 
 # ---------------------------------------------------------------------
 
@@ -88,7 +94,7 @@ class MLPipeline():
 	def replace_with_value(self, df, variables, values):
 		'''
 		For some variables, we can infer what the missing value should be.
-		This function takes a dataframe and a list of variables that matches
+		This function takes a dataframe and a list of variables that match
 		this criteria and replaces null values with the specified value.
 		'''
 		for i in range(len(variables)):
@@ -97,6 +103,42 @@ class MLPipeline():
 			df[variable] = df[variable].fillna(value)
 
 
+	def impute(self, df, variable, cols):
+		'''
+		For some variables, we cannot infer the missing value and replacing with
+		a conditional mean does not make sense.
+		This function takes a dataframe and a variables that matches this criteria 
+		as well as a list of columns to calibrate with and uses nearest neighbors 
+		to impute the null values.
+		'''
+		# Split data into test and train for cross validation
+		is_test = np.random.uniform(0, 1, len(df)) > 0.75
+		train = df[is_test==False]
+		test = df[is_test==True]
+		
+		## Calibrate imputation with training data
+		imputer = KNeighborsRegressor(n_neighbors=1)
+
+		# Split data into null and not null for given variable
+		train_not_null = train[train[variable].isnull()==False]
+		train_null = train[train[variable].isnull()==True]
+
+		# Replace missing values
+		imputer.fit(train_not_null[cols], train_not_null[variable])
+		new_values = imputer.predict(train_null[cols])
+		train_null[variable] = new_values
+
+		# Combine Training Data Back Together
+		train = train_not_null.append(train_null)
+
+		# Apply Nearest Neighbors to Testing Data
+		new_var_name = variable + 'Imputed'
+		test[new_var_name] = imputer.predict(test[cols])
+		test[variable] = np.where(test[variable].isnull(), test[new_var_name],
+									test[variable])
+
+		return train, test
+		
 
 # ---------------------------------------------------------------------
 
