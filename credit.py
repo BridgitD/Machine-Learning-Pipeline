@@ -13,112 +13,106 @@ import sys
 import pipeline as ml 
 
 
-def credit_model(training_data, testing_data):
+def credit_model(dataset):
 	
 	#######################################################
 	# Load Credit Data and Run Initial Summary Statistics #
 	#######################################################
+	print "Loading data..."
+
+	## LOAD DATA
+	df = ml.read_data(dataset)
+	variables = list(df.columns.values)
+
+	## RUN INITIAL SUMMARY STATISTICS & GRAPH DISTRIBUTIONS
+	summary = ml.summarize(df)
+	#print_to_csv(summary, 'summary_stats.csv')
 	
-	credit = ml.MLPipeline(training_data, testing_data)
-	#print credit.summary
-	credit.print_to_csv(credit.summary, 'summary_stats.csv')
-	#print pd.value_counts(credit.df.MonthlyIncome, sort=False)
+	for v in variables:
+		ml.histogram(df, v)
+
+	## FOR FUTURE: Drop rows where 'percentage' fields have values > 1
 
 	############################
 	# Deal with missing values #
 	############################
+	print "Handling missing values..."
 
+	print "Correcting dependents column..."
 	''' DEPENDENTS: Missing values are likely zeros. If someone didn't 
 	provide this info, they likely wouldn't have kids.'''
 	variables = ['NumberOfDependents']
 	values = [0]
-	credit.replace_with_value(credit.df, variables, values)
-	#print pd.value_counts(credit.df.NumberOfDependents)
-	
-	'''MONTHLY INCOME: It wouldn't make sense to determine missing values
-	through replacing with a specific value. Instead, use the NearestNeighbors
-	algorithm to impute the null values based on variables with highest correlation
-	to monthly income.'''
-	
-	variable = 'MonthlyIncome'
-	
-	## FOR NON-NULL INSTANCES OF MONTHLY INCOME, CALCULATE CORRELATIONS
-	non_null = credit.df[credit.df.MonthlyIncome.isnull()==False]
-	#print non_null.corr().ix[:,5]
+	ml.replace_with_value(df, variables, values)
 
-	## TOP 5 CORRELATED VARIABLES
-	calibration_variables = ['NumberOfOpenCreditLinesAndLoans', 
-							'NumberRealEstateLoansOrLines',
-							'NumberOfDependents',
-							'age',
-							'DebtRatio']
-	
-	## FOR FUTURE: Take out all values greater than 3 standard deviations - not working
-	#no_outliers = credit.df[np.abs(credit.df.MonthlyIncome - credit.df.MonthlyIncome.mean() 
-	#				<= (3*credit.df.MonthlyIncome.std()))]
-	
-	## RUN IMPUTATION FOR MONTHLY INCOME
-	credit.df = credit.impute(credit.df, variable, calibration_variables)
-	#print pd.value_counts(credit.df.MonthlyIncome)
-	
-	credit.print_to_csv(credit.df, 'credit-train-data-updated.csv')
-	
+	print "Correcting income column..."
+	'''MONTHLY INCOME: It wouldn't make sense to determine missing values
+	through replacing with a specific value. Instead, impute null values with
+	the mean of income.'''
+	variables = ['MonthlyIncome']
+	ml.replace_with_mean(df, variables)
+
+	#ml.print_to_csv(df, 'credit-data-updated.csv')
+
 	#####################
 	# Generate Features #
 	#####################
+	print "Generating features..."
 
 	## FIND IMPORTANT FEATURES
-	features = np.array(['RevolvingUtilizationOfUnsecuredLines', 'age',
+	test_features = np.array(['RevolvingUtilizationOfUnsecuredLines', 'age',
 							'NumberOfTime30-59DaysPastDueNotWorse',
 							'DebtRatio', 'MonthlyIncome', 'NumberOfOpenCreditLinesAndLoans',
 							'NumberOfTimes90DaysLate', 'NumberRealEstateLoansOrLines',
 							'NumberOfTime60-89DaysPastDueNotWorse', 'NumberOfDependents'])
-	variable = 'SeriousDlqin2yrs'
+	y = 'SeriousDlqin2yrs'
 
-	#print credit.find_features(credit.df, features, variable)
+	## Find initial best features
+	#print ml.find_features(df, test_features, y)
 
 	## ENGINEER ADDITIONAL FEATURES
+	print "Engineering income buckets..."
 	'''MONTHLY INCOME: Break this into buckets, adjusting for outliers'''
-	credit.df['MonthlyIncome_adjust'] = credit.df.MonthlyIncome.apply(lambda x: credit.adjust_outliers(x, 15000))	
-	credit.bin_variable(credit.df, 'MonthlyIncome_adjust', 15, False)
-	#print pd.value_counts(credit.df['MonthlyIncome_adjust_bins'])
+	df['MonthlyIncome_adjust'] = df.MonthlyIncome.apply(lambda x: ml.adjust_outliers(x, 15000))	
+	ml.bin_variable(df, 'MonthlyIncome_adjust', 15, False)
+	#print pd.value_counts(df['MonthlyIncome_adjust_bins'])
 
+	print "Engineering age buckets..."
 	'''AGE: Break this into buckets'''
-	bins = [0] + range(20, 80, 5) + [120]
-	credit.bin_variable(credit.df, 'age', bins, False)
-	#print pd.value_counts(credit.df['age_bins'])
-	#print credit.df.head()
+	bins = [-1] + range(20, 80, 5) + [120]
+	ml.bin_variable(df, 'age', bins, False)
+	#print pd.value_counts(df['age_bins'])
+	
+	#print df.head()
 
 	## RECALCULATE IMPORTANT FEATURES
 	new_features = np.array(['MonthlyIncome_adjust_bins', 'age_bins'])
-	all_features = np.hstack((features, new_features))
+	all_features = np.hstack((test_features, new_features))
 	#print all_features
-	#print credit.df.head()
-	#print credit.find_features(credit.df, all_features, variable)
+	#print ml.summarize(df)
+	#ml.print_to_csv(df, 'test.csv')
+
+	## FIND BEST FEATURES
+	#print ml.find_features(df, all_features, y)
 
 	### FOR FUTURE: It would be cool to be able to automatically point to the top
 	### five best features or focus on the features that meet a certain threshold
 	
 
-	###############################
-	# Build & Evaluate Classifier #
-	###############################
+	################################
+	# Build & Evaluate Classifiers #
+	################################
+	print "Evaluating classifiers..."
 
-	## USE TOP FEATURES TO CALCULATE NEAREST NEIGHBORS
-	top_features = ['RevolvingUtilizationOfUnsecuredLines', 'DebtRatio',
+	## USE TOP FEATURES TO COMPARE CLASSIFIER PERFORMACE
+	X = ['RevolvingUtilizationOfUnsecuredLines', 'DebtRatio',
 					'MonthlyIncome', 'age', 'NumberOfTimes90DaysLate',
 					'NumberOfOpenCreditLinesAndLoans']
 
-	# Output CSV of Test Predictions & Accuracy Score
-	print "Accuracy: " + str(credit.nearest_neighbors(credit.df, top_features, variable))
-
-
-
+	print ml.evaluate_classifiers(df, X, y)
 
 # -------------------------------------------------------------------------
 if __name__ == '__main__':
 	
-	training_data = "data/cs-training.csv"
-	testing_data = "data/cs-test.csv"
-
-	credit_model(training_data, testing_data)
+	dataset = "data/cs-training.csv"
+	credit_model(dataset)
