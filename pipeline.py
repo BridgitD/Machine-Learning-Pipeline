@@ -10,11 +10,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pylab
 import sys
+import time
 import sklearn as sk
+from sklearn.cross_validation import KFold
 from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, precision_score
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, BaggingClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import LinearSVC
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, precision_recall_curve
 
 # Code adapted from https://github.com/yhat/DataGotham2013/
 
@@ -224,11 +228,9 @@ def get_dummys(df, cols):
 ## STEP 5: BUILD AND EVALUATE CLASSIFIERS - Create comparison table of the performace
 ## of each classifier on each evaluation metric
 
-def evaluate_classifiers(df, X, y):
+def build_classifiers(X, y):
 	'''
-	Takes a dataframe, a list of features (X) and the variable to predict (y). 
-	It also takes a list of classifiers to model on and a list of evaluation
-	metrics. 
+	Takes a dataframe of features (X) and a dataframe of the variable to predict (y). 
 	Returns a new dataframe comparing each classifier's performace on 
 	the given evaluation metrics.
 	'''
@@ -236,22 +238,60 @@ def evaluate_classifiers(df, X, y):
 
 	# Classifiers to test
 	classifiers = [('logistic_regression', LogisticRegression()),
-					('k_nearest_neighbors', KNeighborsRegressor())]
+					('k_nearest_neighbors', KNeighborsClassifier()),
+					('decision_tree', DecisionTreeClassifier()),
+					('SVM', LinearSVC()),
+					('random_forest', RandomForestClassifier()),
+					('boosting', GradientBoostingClassifier()),
+					('bagging', BaggingClassifier())]
 
+	index = 0
 	for name, clf in classifiers:
-		rv['classifier'] = [name]
-		model = clf
-		model = model.fit(df[X], df[y])
-		predictions = model.predict(df[X])
+		print name
 
-		# Metrics to evaluate
-		metrics = [('accuracy', accuracy_score(df[y], predictions))]
-		#			('precision', precision_score(df[y], predictions))]
+		# Construct K-folds
+		kf = KFold(len(y), n_folds=5, shuffle=True)
+		y_pred = y.copy()
+
+		rv.loc[index,'classifier'] = name
+		start_time = time.time()
 		
-		for name, m in metrics:
-			rv[name] = [m]
+		# Iterate through folds
+		for train_index, test_index in kf:
+			X_train, X_test = X[train_index], X[test_index]
+			y_train = y[train_index]
+
+			#Initialize classifier
+			model = clf
+			model.fit(X_train, y_train)
+			y_pred[test_index] = model.predict(X_test)
+		
+		end_time = time.time()
+		#print pd.value_counts(predictions)
+
+		# Calculate running time
+		rv.loc[index, 'time'] = end_time - start_time
+
+		evaluate_classifier(rv, index, y, y_pred)
+		index += 1
 
 	return rv
+
+		
+def evaluate_classifier(df, index, y_real, y_predict):
+	'''
+	For an index of a given classifier, evaluate it by various metrics
+	'''
+	# Metrics to evaluate
+	metrics = [('accuracy', accuracy_score(y_real, y_predict)),
+				('precision', precision_score(y_real, y_predict)),
+				('recall', recall_score(y_real, y_predict)),
+				('f1', f1_score(y_real, y_predict)),
+				('area_under_curve', roc_auc_score(y_real, y_predict))]
+
+	for name, m in metrics:
+		df.loc[index, name] = m
+
 
 # -------------------------------------------------------------------------
 if __name__ == '__main__':

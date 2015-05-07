@@ -13,7 +13,7 @@ import sys
 import pipeline as ml 
 
 
-def credit_model(dataset):
+def prepare_data(dataset):
 	
 	#######################################################
 	# Load Credit Data and Run Initial Summary Statistics #
@@ -23,7 +23,7 @@ def credit_model(dataset):
 	## LOAD DATA
 	df = ml.read_data(dataset)
 	variables = list(df.columns.values)
-
+	
 	## RUN INITIAL SUMMARY STATISTICS & GRAPH DISTRIBUTIONS
 	summary = ml.summarize(df)
 	#print_to_csv(summary, 'summary_stats.csv')
@@ -90,14 +90,24 @@ def credit_model(dataset):
 	all_features = np.hstack((test_features, new_features))
 	#print all_features
 	#print ml.summarize(df)
-	#ml.print_to_csv(df, 'test.csv')
 
 	## FIND BEST FEATURES
 	#print ml.find_features(df, all_features, y)
 
 	### FOR FUTURE: It would be cool to be able to automatically point to the top
-	### five best features or focus on the features that meet a certain threshold
+	### five best features or focus on the features that meet a certain threshold.
+	### Then I could return that as well for the run_classifiers function.
+
+	## PRINT PREPARED DATA TO CSV
+	file_name = "credit-data-clean.csv"
+	ml.print_to_csv(df, file_name)
+
+	return file_name, y
 	
+def run_classifiers(csv_file, y):
+
+	## LOAD PREPARED DATA
+	df = ml.read_data(csv_file)
 
 	################################
 	# Build & Evaluate Classifiers #
@@ -105,14 +115,25 @@ def credit_model(dataset):
 	print "Evaluating classifiers..."
 
 	## USE TOP FEATURES TO COMPARE CLASSIFIER PERFORMACE
-	X = ['RevolvingUtilizationOfUnsecuredLines', 'DebtRatio',
+	features = ['RevolvingUtilizationOfUnsecuredLines', 'DebtRatio',
 					'MonthlyIncome', 'age', 'NumberOfTimes90DaysLate',
 					'NumberOfOpenCreditLinesAndLoans']
 
-	print ml.evaluate_classifiers(df, X, y)
+	X = df[features].as_matrix()
+	y = df[y].as_matrix()
+
+	#print ml.build_classifiers(X,y)
+	ml.print_to_csv(ml.build_classifiers(X, y), 'compare_classifiers.csv')
 
 # -------------------------------------------------------------------------
 if __name__ == '__main__':
 	
-	dataset = "data/cs-training.csv"
-	credit_model(dataset)
+	#dataset = "data/cs-training.csv"
+	#file_name, y = prepare_data(dataset)
+	
+	y = 'SeriousDlqin2yrs'
+	file_name = "credit-data-clean.csv"
+	run_classifiers(file_name, y)
+
+
+
