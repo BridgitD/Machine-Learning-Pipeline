@@ -34,7 +34,7 @@ def read_data(filename):
 	'''
 	Takes a filename and returns a dataframe.
 	'''
-	original = pd.read_csv(filename, index_col=0)
+	original = pd.read_csv(filename, header=0)
 	df = original.copy()
 	return df
 
@@ -72,7 +72,7 @@ def print_to_csv(df, filename):
 def histogram(df, field):
 	'''Given a dataframe and a field, this creates histograms.'''
 
-	fn = field + '.png'
+	fn = 'histograms/' + field + '.png'
 
 	#Determine number of bins based on number of different values
 	unique_vals = len(df[field].value_counts())
@@ -120,6 +120,16 @@ def replace_with_mean(df, variables):
 		for index, row in df.iterrows():
 			if pd.isnull(row[field]):
 				df.ix[index, field] = mean
+
+def replace_with_other_col(df, variable_missing, variable_fill):
+	'''
+	Takes a variable and replaces missing values (variable_missing) with
+	data from another column (variable_fill).
+	'''
+
+	for index, row in df.iterrows():
+		if pd.isnull(row[variable_missing]):
+			df.ix[index, field] = row[variable_fill]
 
 ##################
 ## TO ADD LATER ##
